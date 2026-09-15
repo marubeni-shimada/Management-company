@@ -147,6 +147,29 @@ td.ops{white-space:nowrap;text-align:right}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;font-weight:700;opacity:0;pointer-events:none;transition:.22s;z-index:80;box-shadow:0 8px 30px rgba(0,0,0,.25)}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* 印刷 / PDF */
+.printhead{display:none}
+.printonly{display:none}
+@media print{
+  @page{size:A4 landscape;margin:12mm}
+  body{background:#fff;font-size:10.5px}
+  .wrap{max-width:none;padding:0}
+  header.top,.toolbar,.foot,.mask,.toast{display:none !important}
+  .printhead{display:block;margin-bottom:10px}
+  .printhead h1{font-size:16px;margin:0 0 2px}
+  .printhead .meta{font-size:11px;color:#333}
+  .tablewrap{border:0;box-shadow:none;border-radius:0}
+  .tscroll{overflow:visible}
+  table{min-width:0;width:100%;table-layout:auto}
+  thead{display:table-header-group}
+  thead th{background:#eee !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-size:10px}
+  tbody tr{page-break-inside:avoid}
+  td.ops{display:none} th:last-child{display:none}
+  select.inl{display:none !important}
+  .printonly{display:inline}
+  td.memo{cursor:auto}
+  .bdg{border:1px solid #ccc}
+}
 @media(max-width:640px){
   .wrap{padding:16px 12px 50px}
   .hdr-actions .btn span.lbl{display:none}
@@ -156,6 +179,7 @@ td.ops{white-space:nowrap;text-align:right}
 </head>
 <body>
 <div class="wrap">
+  <div id="printHead" class="printhead"></div>
   <header class="top">
     <div class="title">
       <h1>取引先管理</h1>
@@ -165,6 +189,7 @@ td.ops{white-space:nowrap;text-align:right}
       <button class="btn share" id="btnShare"><span class="dot"></span><span id="shareLbl">共有：未接続</span></button>
       <button class="btn" id="btnImport">データ取り込み</button>
       <button class="btn" id="btnMaster">担当者・役員マスタ</button>
+      <button class="btn" id="btnPrint">印刷 / PDF</button>
       <button class="btn" id="btnExport">CSV出力</button>
       <button class="btn pri" id="btnNew">＋ 新規取引先</button>
     </div>
@@ -424,8 +449,8 @@ function render(){
         '<td><div class="c-name">'+esc(r.name)+'<span class="badges">'+bdg+'</span></div>'+(r.kana?'<div class="c-kana">'+esc(r.kana)+'</div>':'')+'</td>'+
         '<td class="addr">'+addr+'</td>'+
         '<td class="telfax">'+telfax+'</td>'+
-        '<td class="assign">'+assignSelect('inl',TANTO,r.tanto,'data-f="tanto" data-id="'+r.id+'"')+'</td>'+
-        '<td class="assign">'+assignSelect('inl',YAKUIN,r.yakuin,'data-f="yakuin" data-id="'+r.id+'"')+'</td>'+
+        '<td class="assign">'+assignSelect('inl',TANTO,r.tanto,'data-f="tanto" data-id="'+r.id+'"')+'<span class="printonly">'+esc(r.tanto||'')+'</span></td>'+
+        '<td class="assign">'+assignSelect('inl',YAKUIN,r.yakuin,'data-f="yakuin" data-id="'+r.id+'"')+'<span class="printonly">'+esc(r.yakuin||'')+'</span></td>'+
         '<td class="memo" contenteditable="true" spellcheck="false" data-memo="'+r.id+'" data-ph="メモを入力">'+esc(r.memo||'')+'</td>'+
         '<td class="upd">'+esc(r.updated||'')+'</td>'+
         '<td class="ops"><button class="btn ghost sm" data-edit="'+r.id+'">編集</button></td>'+
@@ -580,6 +605,22 @@ $('btnExport').addEventListener('click',()=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='取引先一覧.csv';a.click();
   toast('CSVを出力しました（'+rows.length+'件）');
 });
+
+/* ---------- 印刷 / PDF ---------- */
+function fillPrintHead(){
+  const rows=DATA.filter(passFilter);
+  const sortLbl={kana:'フリガナ順',updated:'更新日順',tanto:'担当者順',yakuin:'役員順'}[curSort]||'';
+  const cond=[];
+  if(curSrc) cond.push('区分='+curSrc);
+  if(curFTanto) cond.push('担当者='+curFTanto);
+  if(curFYakuin) cond.push('役員='+curFYakuin);
+  if(curQ) cond.push('検索「'+curQ+'」');
+  const d=new Date(); const z=x=>('0'+x).slice(-2);
+  const ds=d.getFullYear()+'/'+z(d.getMonth()+1)+'/'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());
+  $('printHead').innerHTML='<h1>取引先一覧</h1><div class="meta">'+rows.length+'件'+(cond.length?'（'+cond.map(esc).join('／')+'）':'')+'　／　'+esc(sortLbl)+'　／　出力 '+ds+'</div>';
+}
+$('btnPrint').addEventListener('click',()=>{ fillPrintHead(); window.print(); });
+window.addEventListener('beforeprint',fillPrintHead);
 
 /* ---------- mask helpers ---------- */
 function openMask(id){$(id).classList.add('open');}
