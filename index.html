@@ -380,6 +380,20 @@ function norm(s){
   return x.toUpperCase();
 }
 function kkey(r){return (r.kana||'ﾝ')+''+r.name;}
+/* 並べ替えキー：フリガナから法人格(㈱㈲/カブ/ユウ等)を除去し、英字読みはカタカナへ寄せる（表示のフリガナは変えない） */
+const _ROMA=[['kya','キャ'],['kyu','キュ'],['kyo','キョ'],['sha','シャ'],['shu','シュ'],['sho','ショ'],['shi','シ'],['cha','チャ'],['chu','チュ'],['cho','チョ'],['chi','チ'],['tsu','ツ'],['sya','シャ'],['syu','シュ'],['syo','ショ'],['nya','ニャ'],['nyu','ニュ'],['nyo','ニョ'],['hya','ヒャ'],['hyu','ヒュ'],['hyo','ヒョ'],['mya','ミャ'],['myu','ミュ'],['myo','ミョ'],['rya','リャ'],['ryu','リュ'],['ryo','リョ'],['gya','ギャ'],['gyu','ギュ'],['gyo','ギョ'],['jya','ジャ'],['jyu','ジュ'],['jyo','ジョ'],['bya','ビャ'],['byu','ビュ'],['byo','ビョ'],['pya','ピャ'],['pyu','ピュ'],['pyo','ピョ'],['ka','カ'],['ki','キ'],['ku','ク'],['ke','ケ'],['ko','コ'],['sa','サ'],['si','シ'],['su','ス'],['se','セ'],['so','ソ'],['ta','タ'],['ti','チ'],['tu','ツ'],['te','テ'],['to','ト'],['na','ナ'],['ni','ニ'],['nu','ヌ'],['ne','ネ'],['no','ノ'],['ha','ハ'],['hi','ヒ'],['hu','フ'],['fu','フ'],['he','ヘ'],['ho','ホ'],['ma','マ'],['mi','ミ'],['mu','ム'],['me','メ'],['mo','モ'],['ya','ヤ'],['yu','ユ'],['yo','ヨ'],['ra','ラ'],['ri','リ'],['ru','ル'],['re','レ'],['ro','ロ'],['wa','ワ'],['wo','ヲ'],['ga','ガ'],['gi','ギ'],['gu','グ'],['ge','ゲ'],['go','ゴ'],['za','ザ'],['ji','ジ'],['zi','ジ'],['zu','ズ'],['ze','ゼ'],['zo','ゾ'],['da','ダ'],['di','ヂ'],['du','ヅ'],['de','デ'],['do','ド'],['ba','バ'],['bi','ビ'],['bu','ブ'],['be','ベ'],['bo','ボ'],['pa','パ'],['pi','ピ'],['pu','プ'],['pe','ペ'],['po','ポ'],['va','ヴァ'],['vi','ヴィ'],['vu','ヴ'],['ve','ヴェ'],['vo','ヴォ'],['fa','ファ'],['fi','フィ'],['fe','フェ'],['fo','フォ'],['a','ア'],['i','イ'],['u','ウ'],['e','エ'],['o','オ']];
+const _LET={A:'エー',B:'ビー',C:'シー',D:'ディー',E:'イー',F:'エフ',G:'ジー',H:'エイチ',I:'アイ',J:'ジェー',K:'ケー',L:'エル',M:'エム',N:'エヌ',O:'オー',P:'ピー',Q:'キュー',R:'アール',S:'エス',T:'ティー',U:'ユー',V:'ブイ',W:'ダブリュー',X:'エックス',Y:'ワイ',Z:'ゼット'};
+function _roma(s){let out='',i=0,low=s.toLowerCase();while(i<s.length){let m=null;for(const p of _ROMA){if(low.startsWith(p[0],i)){m=p;break;}}if(m){out+=m[1];i+=m[0].length;continue;}const c=s[i];if(c==='n'||c==='N'){out+='ン';i++;continue;}if(/[A-Za-z]/.test(c)){out+=_LET[c.toUpperCase()]||'';i++;continue;}out+=c;i++;}return out;}
+function sortKey(kana){
+  let s=(kana||'').normalize('NFKC');
+  s=s.replace(/株式会社|有限会社|合同会社|㈱|㈲|㈾/g,'');
+  s=s.replace(/[(（](カブ|ユウ|カ|ユ|ゴウ|ザイ|カナヤ)[)）]/g,'');
+  s=s.replace(/^(カブ|ユウ)/,'');
+  s=s.replace(/[\s　・.,＆&\-\(\)（）]/g,'');
+  if(/[A-Za-z]/.test(s)) s=_roma(s);
+  return s;
+}
+function kkey(r){const k=sortKey(r.kana); return (k||(r.kana||r.name||'ん'))+''+(r.name||'');}
 function sortData(){DATA.sort((a,b)=>kkey(a).localeCompare(kkey(b),'ja'));}
 function nowStamp(){return fmtStamp(new Date());}
 function fmtStamp(d){const z=n=>('0'+n).slice(-2);return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());}
