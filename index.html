@@ -344,7 +344,7 @@ let editId=null, masterTab='tanto';
 const URL_BAKED=!!GAS_URL;
 let gasUrl=GAS_URL||localStorage.getItem(K_URL)||'';
 let dirtyIds=new Set(), deletedIds=new Set(), delTanto=new Set(), delYakuin=new Set();
-let syncTimer=null, pollTimer=null, lastSync=0, syncing=false, lastRev=-1, editingMemo=false;
+let syncTimer=null, pollTimer=null, lastSync=0, syncing=false, lastRev=-1, editingMemo=false, mastersDirty=false;
 
 /* ---------- util ---------- */
 const $=id=>document.getElementById(id);
@@ -554,7 +554,7 @@ function addMaster(){
   if(list.includes(v)){toast('すでにあります');return;}
   list.push(v); list.sort((a,b)=>a.localeCompare(b,'ja'));
   (masterTab==='tanto'?delTanto:delYakuin).delete(v);
-  save(); scheduleSync();
+  mastersDirty=true; save(); scheduleSync();
   $('mAdd').value=''; renderMaster(); renderFilters(); render(); toast('追加：'+v);
 }
 $('mList').addEventListener('click',e=>{
@@ -562,11 +562,11 @@ $('mList').addEventListener('click',e=>{
   const del=e.target.closest('[data-del]'), ren=e.target.closest('[data-ren]');
   if(del){const i=+del.dataset.del,nm=list[i];const used=DATA.filter(r=>r[fld]===nm).length;
     if(!confirm('「'+nm+'」を削除します'+(used?'（'+used+'社に設定中。設定は未設定に戻ります）':'')+'。よろしいですか？'))return;
-    list.splice(i,1); (fld==='tanto'?delTanto:delYakuin).add(nm);
+    list.splice(i,1); (fld==='tanto'?delTanto:delYakuin).add(nm); mastersDirty=true;
     DATA.forEach(r=>{if(r[fld]===nm){r[fld]='';touch(r);dirtyIds.add(r.id);}}); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('削除しました');}
   if(ren){const i=+ren.dataset.ren,old=list[i];const nv=prompt('新しい名称',old);if(nv==null)return;const v=nv.trim();if(!v||v===old)return;
     if(list.includes(v)){toast('すでにあります');return;}
-    list[i]=v; (fld==='tanto'?delTanto:delYakuin).add(old);
+    list[i]=v; (fld==='tanto'?delTanto:delYakuin).add(old); mastersDirty=true;
     DATA.forEach(r=>{if(r[fld]===old){r[fld]=v;touch(r);dirtyIds.add(r.id);}}); list.sort((a,b)=>a.localeCompare(b,'ja')); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('変更しました');}
 });
 
@@ -601,10 +601,15 @@ function setShare(state){
 }
 function hhmm(t){const d=new Date(t);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
 function _sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+async function _fetchT(url,opts,ms){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms||30000);
+  try{ return await fetch(url,Object.assign({signal:c.signal},opts)); }
+  finally{ clearTimeout(t); }
+}
 async function gasGet(){
   let last;
   for(let i=0;i<5;i++){
-    try{ const res=await fetch(gasUrl,{method:'GET',redirect:'follow'});
+    try{ const res=await _fetchT(gasUrl,{method:'GET',redirect:'follow'},25000);
       const t=await res.text();
       if(res.ok && t && t[0]==='{') return JSON.parse(t);   // GASは初回リダイレクトでHTMLを返す事があるので再試行
       last='非JSON応答';
@@ -614,7 +619,7 @@ async function gasGet(){
   throw new Error(last||'GET失敗');
 }
 async function gasPost(state){
-  const res=await fetch(gasUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(state)});
+  const res=await _fetchT(gasUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(state)},45000);
   if(!res.ok) throw new Error('HTTP '+res.status);
   const t=await res.text();
   try{ return JSON.parse(t); }catch(e){ return {}; }   // HTML(リダイレクト)応答でも書込は成功しているので成功扱い
@@ -659,7 +664,7 @@ function scheduleSync(){
 }
 async function syncPush(){
   if(!gasUrl||syncing) return;
-  if(!dirtyIds.size && !deletedIds.size && !delTanto.size && !delYakuin.size) return;
+  if(!dirtyIds.size && !deletedIds.size && !mastersDirty){ setShare('on'); return; }
   syncing=true; setShare('syncing');
   const upserts=DATA.filter(r=>dirtyIds.has(r.id)).map(recPayload);
   const deletes=[...deletedIds];
@@ -669,7 +674,7 @@ async function syncPush(){
     const res=await gasPost(body);
     sentDirty.forEach(id=>dirtyIds.delete(id));   // 送った分だけ消す（送信中の新規変更は残す）
     sentDel.forEach(id=>deletedIds.delete(id));
-    delTanto.clear(); delYakuin.clear();
+    delTanto.clear(); delYakuin.clear(); mastersDirty=false;
     if(res&&typeof res.rev==='number') lastRev=res.rev;
     lastSync=Date.now(); syncing=false;
     if(dirtyIds.size||deletedIds.size){ setShare('syncing'); scheduleSync(); }else setShare('on');
