@@ -384,10 +384,22 @@ function kkey(r){return (r.kana||'ﾝ')+''+r.name;}
 const _ROMA=[['kya','キャ'],['kyu','キュ'],['kyo','キョ'],['sha','シャ'],['shu','シュ'],['sho','ショ'],['shi','シ'],['cha','チャ'],['chu','チュ'],['cho','チョ'],['chi','チ'],['tsu','ツ'],['sya','シャ'],['syu','シュ'],['syo','ショ'],['nya','ニャ'],['nyu','ニュ'],['nyo','ニョ'],['hya','ヒャ'],['hyu','ヒュ'],['hyo','ヒョ'],['mya','ミャ'],['myu','ミュ'],['myo','ミョ'],['rya','リャ'],['ryu','リュ'],['ryo','リョ'],['gya','ギャ'],['gyu','ギュ'],['gyo','ギョ'],['jya','ジャ'],['jyu','ジュ'],['jyo','ジョ'],['bya','ビャ'],['byu','ビュ'],['byo','ビョ'],['pya','ピャ'],['pyu','ピュ'],['pyo','ピョ'],['ka','カ'],['ki','キ'],['ku','ク'],['ke','ケ'],['ko','コ'],['sa','サ'],['si','シ'],['su','ス'],['se','セ'],['so','ソ'],['ta','タ'],['ti','チ'],['tu','ツ'],['te','テ'],['to','ト'],['na','ナ'],['ni','ニ'],['nu','ヌ'],['ne','ネ'],['no','ノ'],['ha','ハ'],['hi','ヒ'],['hu','フ'],['fu','フ'],['he','ヘ'],['ho','ホ'],['ma','マ'],['mi','ミ'],['mu','ム'],['me','メ'],['mo','モ'],['ya','ヤ'],['yu','ユ'],['yo','ヨ'],['ra','ラ'],['ri','リ'],['ru','ル'],['re','レ'],['ro','ロ'],['wa','ワ'],['wo','ヲ'],['ga','ガ'],['gi','ギ'],['gu','グ'],['ge','ゲ'],['go','ゴ'],['za','ザ'],['ji','ジ'],['zi','ジ'],['zu','ズ'],['ze','ゼ'],['zo','ゾ'],['da','ダ'],['di','ヂ'],['du','ヅ'],['de','デ'],['do','ド'],['ba','バ'],['bi','ビ'],['bu','ブ'],['be','ベ'],['bo','ボ'],['pa','パ'],['pi','ピ'],['pu','プ'],['pe','ペ'],['po','ポ'],['va','ヴァ'],['vi','ヴィ'],['vu','ヴ'],['ve','ヴェ'],['vo','ヴォ'],['fa','ファ'],['fi','フィ'],['fe','フェ'],['fo','フォ'],['a','ア'],['i','イ'],['u','ウ'],['e','エ'],['o','オ']];
 const _LET={A:'エー',B:'ビー',C:'シー',D:'ディー',E:'イー',F:'エフ',G:'ジー',H:'エイチ',I:'アイ',J:'ジェー',K:'ケー',L:'エル',M:'エム',N:'エヌ',O:'オー',P:'ピー',Q:'キュー',R:'アール',S:'エス',T:'ティー',U:'ユー',V:'ブイ',W:'ダブリュー',X:'エックス',Y:'ワイ',Z:'ゼット'};
 function _roma(s){let out='',i=0,low=s.toLowerCase();while(i<s.length){let m=null;for(const p of _ROMA){if(low.startsWith(p[0],i)){m=p;break;}}if(m){out+=m[1];i+=m[0].length;continue;}const c=s[i];if(c==='n'||c==='N'){out+='ン';i++;continue;}if(/[A-Za-z]/.test(c)){out+=_LET[c.toUpperCase()]||'';i++;continue;}out+=c;i++;}return out;}
+/* 表示用フリガナ：法人格(㈱㈲/ｶﾌﾞ/ﾕｳ/(有)等)を読み仮名から除去。会社名を根拠に前後のｶﾌﾞ/ﾕｳだけ消す（名前の一部は消さない） */
+function dispKana(k,name){
+  let s=(k||''); name=name||'';
+  s=s.replace(/[(（](ｶﾌﾞ|ﾕｳ|ｶ|ﾕ|カブ|ユウ|カ|ユ|株|有)[)）]/g,'');
+  s=s.replace(/㈱|㈲|㈾|株式会社|有限会社|合同会社/g,'');
+  const lK=/^(㈱|株式会社|[(（]株[)）])/.test(name),lY=/^(㈲|有限会社|[(（]有[)）])/.test(name);
+  const tK=/(㈱|株式会社|[(（]株[)）])$/.test(name),tY=/(㈲|有限会社|[(（]有[)）])$/.test(name);
+  if(lK)s=s.replace(/^(ｶﾌﾞ|カブ)/,''); if(lY)s=s.replace(/^(ﾕｳ|ユウ)/,'');
+  if(tK)s=s.replace(/(ｶﾌﾞ|カブ)$/,''); if(tY)s=s.replace(/(ﾕｳ|ユウ)$/,'');
+  return s.trim();
+}
 function sortKey(kana){
   let s=(kana||'').normalize('NFKC');
   s=s.replace(/株式会社|有限会社|合同会社|㈱|㈲|㈾/g,'');
   s=s.replace(/[(（](カブ|ユウ|カ|ユ|ゴウ|ザイ|カナヤ)[)）]/g,'');
+  s=s.replace(/[(（][株有][)）]/g,'').replace(/^[株有]/,'');   // (株)(有)や先頭の株/有（漢字表記が入った場合）
   s=s.replace(/^(カブ|ユウ)/,'');
   s=s.replace(/[\s　・.,＆&\-\(\)（）]/g,'');
   if(/[A-Za-z]/.test(s)) s=_roma(s);
@@ -441,7 +453,7 @@ function passFilter(r){
   if(curFYakuin && r.yakuin!==curFYakuin) return false;
   if(curQ){
     const q=curQ.normalize('NFKC').toLowerCase();
-    const hay=(r.name+' '+r.kana+' '+r.addr+' '+r.tel+' '+r.zip+' '+(r.memo||'')+' '+(r.tanto||'')+' '+(r.yakuin||'')).normalize('NFKC').toLowerCase();
+    const hay=(r.name+' '+r.kana+' '+dispKana(r.kana,r.name)+' '+r.addr+' '+r.tel+' '+r.zip+' '+(r.memo||'')+' '+(r.tanto||'')+' '+(r.yakuin||'')).normalize('NFKC').toLowerCase();
     if(!hay.includes(q)) return false;
   }
   return true;
@@ -460,7 +472,7 @@ function render(){
       const addr=(r.zip?'<span class="zip">〒'+esc(r.zip)+'</span>':'')+(r.addr?'<div>'+esc(r.addr)+'</div>':'');
       const telfax=(r.tel?'<div class="mono">'+esc(r.tel)+'</div>':'')+(r.fax?'<div class="mono fax">FAX '+esc(r.fax)+'</div>':'');
       return '<tr data-id="'+r.id+'">'+
-        '<td><div class="c-name">'+esc(r.name)+'<span class="badges">'+bdg+'</span></div>'+(r.kana?'<div class="c-kana">'+esc(r.kana)+'</div>':'')+'</td>'+
+        '<td><div class="c-name">'+esc(r.name)+'<span class="badges">'+bdg+'</span></div>'+((dispKana(r.kana,r.name))?'<div class="c-kana">'+esc(dispKana(r.kana,r.name))+'</div>':'')+'</td>'+
         '<td class="addr">'+addr+'</td>'+
         '<td class="telfax">'+telfax+'</td>'+
         '<td class="assign">'+assignSelect('inl',TANTO,r.tanto,'data-f="tanto" data-id="'+r.id+'"')+'<span class="printonly">'+esc(r.tanto||'')+'</span></td>'+
@@ -530,7 +542,7 @@ function openEdit(id){
   fillAssignSelects();
   const r=id?DATA.find(x=>x.id===id):null;
   $('edTitle').textContent=id?'取引先を編集':'取引先を追加';
-  $('edName').value=r?r.name:''; $('edKana').value=r?r.kana:''; $('edZip').value=r?r.zip:'';
+  $('edName').value=r?r.name:''; $('edKana').value=r?dispKana(r.kana,r.name):''; $('edZip').value=r?r.zip:'';
   $('edAddr').value=r?r.addr:''; $('edTel').value=r?r.tel:''; $('edFax').value=r?r.fax:'';
   $('edSrc').value=r?(r.src[0]||'得意先'):'得意先';
   $('edTanto').value=r?r.tanto:''; $('edYakuin').value=r?r.yakuin:''; $('edMemo').value=r?(r.memo||''):'';
@@ -614,7 +626,7 @@ $('btnExport').addEventListener('click',()=>{
   const rows=sortRows(DATA.filter(passFilter));
   const head=['会社名','フリガナ','郵便番号','住所','TEL','FAX','区分','担当者','役員','備考','更新日'];
   const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
-  const lines=[head.map(q).join(',')].concat(rows.map(r=>[r.name,r.kana,r.zip,r.addr,r.tel,r.fax,r.src.join('/'),r.tanto,r.yakuin,r.memo||'',r.updated||''].map(q).join(',')));
+  const lines=[head.map(q).join(',')].concat(rows.map(r=>[r.name,dispKana(r.kana,r.name),r.zip,r.addr,r.tel,r.fax,r.src.join('/'),r.tanto,r.yakuin,r.memo||'',r.updated||''].map(q).join(',')));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='取引先一覧.csv';a.click();
   toast('CSVを出力しました（'+rows.length+'件）');
