@@ -626,7 +626,7 @@ async function gasPost(state){
 }
 async function pushFull(){
   if(!gasUrl) return false;
-  syncing=true; setShare('syncing');
+  syncing=true;
   try{
     const res=await gasPost(stateFor(DATA,TANTO,YAKUIN));
     dirtyIds.clear(); deletedIds.clear(); delTanto.clear(); delYakuin.clear();
@@ -658,14 +658,14 @@ function adopt(merged){
 }
 function scheduleSync(){
   if(!gasUrl) return;
-  setShare('syncing');
+  // 楽観的更新：保存はローカルで即時完了扱い。共有へは裏で送る（"同期中"で待たせない）
   clearTimeout(syncTimer);
-  syncTimer=setTimeout(syncPush,1400);
+  syncTimer=setTimeout(syncPush,900);
 }
 async function syncPush(){
   if(!gasUrl||syncing) return;
   if(!dirtyIds.size && !deletedIds.size && !mastersDirty){ setShare('on'); return; }
-  syncing=true; setShare('syncing');
+  syncing=true;
   const upserts=DATA.filter(r=>dirtyIds.has(r.id)).map(recPayload);
   const deletes=[...deletedIds];
   const sentDirty=[...dirtyIds], sentDel=[...deletedIds];
@@ -676,13 +676,13 @@ async function syncPush(){
     sentDel.forEach(id=>deletedIds.delete(id));
     delTanto.clear(); delYakuin.clear(); mastersDirty=false;
     if(res&&typeof res.rev==='number') lastRev=res.rev;
-    lastSync=Date.now(); syncing=false;
-    if(dirtyIds.size||deletedIds.size){ setShare('syncing'); scheduleSync(); }else setShare('on');
+    lastSync=Date.now(); syncing=false; setShare('on');
+    if(dirtyIds.size||deletedIds.size||mastersDirty){ scheduleSync(); }   // 送信中に増えた分を続けて送る
   }catch(e){ syncing=false; setShare('err'); clearTimeout(syncTimer); syncTimer=setTimeout(syncPush,4000); }
 }
 async function pullShared(silent){
   if(!gasUrl||syncing) return;
-  syncing=true; if(!silent) setShare('syncing');
+  syncing=true;
   try{
     const remote=await gasGet();
     adopt(mergeWithRemote(remote));
@@ -701,7 +701,7 @@ function startPoll(){ clearInterval(pollTimer); pollTimer=setInterval(async()=>{
 /* 起動時：共有URLが設定済みなら自動接続。共有が空なら初回だけローカル(796件)を投入 */
 async function initShared(){
   if(!gasUrl) return;
-  syncing=true; setShare('syncing');
+  syncing=true;
   try{
     const remote=await gasGet();
     if((remote&&remote.records||[]).length===0 && DATA.length){
@@ -903,6 +903,9 @@ $('impRun').addEventListener('click',async()=>{
   else { $('impStat').textContent='保存しました（更新 '+upd+'／新規 '+add+'）※共有未接続'; }
   toast('取り込み完了：更新'+upd+'／新規'+add);
 });
+
+/* 未送信の変更があるまま閉じる場合は警告（楽観的更新のデータ保護） */
+window.addEventListener('beforeunload',e=>{ if(gasUrl && (dirtyIds.size||deletedIds.size||mastersDirty||syncing)){ e.preventDefault(); e.returnValue=''; } });
 
 /* ---------- init ---------- */
 load(); renderFilters(); render(); setShare(gasUrl?'on':'off');
