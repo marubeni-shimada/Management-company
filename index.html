@@ -316,7 +316,16 @@ function norm(s){
 }
 function kkey(r){return (r.kana||'ﾝ')+''+r.name;}
 function sortData(){DATA.sort((a,b)=>kkey(a).localeCompare(kkey(b),'ja'));}
-function nowStamp(){const d=new Date();const z=n=>('0'+n).slice(-2);return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());}
+function nowStamp(){return fmtStamp(new Date());}
+function fmtStamp(d){const z=n=>('0'+n).slice(-2);return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());}
+/* スプレッドシートがDate型に変換した更新日を 'YYYY-MM-DD HH:mm' に戻す */
+function fixStamp(s){
+  if(s==null||s==='') return '';
+  if(typeof s==='string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) return s;
+  const d=new Date(s);
+  if(!isNaN(d.getTime())) return fmtStamp(d);
+  return String(s);
+}
 function touch(r){r.updated=nowStamp();}
 function sortRows(rows){
   const kc=(a,b)=>kkey(a).localeCompare(kkey(b),'ja');
@@ -557,7 +566,7 @@ function stateFor(records,tanto,yakuin){
   return {records:records.map(r=>({id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''})),tanto:tanto.slice(),yakuin:yakuin.slice()};
 }
 function normRemote(remote){
-  const recs=(remote&&remote.records||[]).map(r=>({id:r.id||uid(),name:r.name||'',kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:(r.src?String(r.src).split('/'):['得意先']),tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''}));
+  const recs=(remote&&remote.records||[]).map(r=>({id:r.id||uid(),name:r.name||'',kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:(r.src?String(r.src).split('/'):['得意先']),tanto:r.tanto||'',yakuin:r.yakuin||'',updated:fixStamp(r.updated)}));
   return {records:recs,tanto:(remote&&remote.tanto||[]).slice(),yakuin:(remote&&remote.yakuin||[]).slice()};
 }
 function mergeWithRemote(remote){
