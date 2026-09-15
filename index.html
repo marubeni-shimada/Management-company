@@ -51,6 +51,11 @@ header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:1
 .urlrow input:focus{outline:none;border-color:var(--accent);background:#fff}
 .shstat{margin-top:12px;font-size:12.5px;font-weight:700}
 .shstat.ok{color:#2f7d59}.shstat.ng{color:var(--danger)}
+.implist{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.impitem{font-size:12.5px;padding:8px 11px;border:1px solid var(--line2);border-radius:8px;background:#fbfbf9}
+.impitem b{font-weight:800}
+.impitem.ng{background:var(--danger-bg);border-color:#f0c9c6;color:var(--danger)}
+.impsum{margin-top:10px;font-size:13px;font-weight:800;color:var(--ink)}
 
 /* toolbar */
 .toolbar{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow);margin-bottom:14px}
@@ -158,6 +163,7 @@ td.ops{white-space:nowrap;text-align:right}
     </div>
     <div class="hdr-actions">
       <button class="btn share" id="btnShare"><span class="dot"></span><span id="shareLbl">共有：未接続</span></button>
+      <button class="btn" id="btnImport">データ取り込み</button>
       <button class="btn" id="btnMaster">担当者・役員マスタ</button>
       <button class="btn" id="btnExport">CSV出力</button>
       <button class="btn pri" id="btnNew">＋ 新規取引先</button>
@@ -261,6 +267,32 @@ td.ops{white-space:nowrap;text-align:right}
     <div class="mfoot">
       <span></span>
       <button class="btn pri" data-close>閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- データ取り込み モーダル -->
+<div class="mask" id="mImport">
+  <div class="modal wide">
+    <div class="mhead"><h2>データ取り込み（弥生販売のExcel）</h2><button class="btn ghost sm" data-close>✕</button></div>
+    <div class="mbody">
+      <div class="hint">
+        弥生販売から出力した <b>得意先リスト／仕入先リスト</b>（Excel .xlsx）を選ぶと、会社名で照合して
+        <b>住所・TEL・FAX・郵便番号・更新日を最新化</b>し、無い会社は追加します。<br>
+        <b>担当者・役員・備考（手入力分）はそのまま保持</b>します。ファイル名に「得意先／仕入先」が入っていれば区分を自動判定します。
+        <div style="margin-top:8px;color:var(--ink3)">対応形式：弥生販売「リスト形式」得意先／仕入先（今後、他の形式も追加できます）</div>
+      </div>
+      <div class="urlrow" style="margin-top:14px">
+        <input type="file" id="impFile" accept=".xlsx" multiple style="flex:1">
+      </div>
+      <div id="impResult" class="implist"></div>
+    </div>
+    <div class="mfoot">
+      <span id="impStat" class="shstat"></span>
+      <div style="display:flex;gap:8px">
+        <button class="btn" data-close>閉じる</button>
+        <button class="btn pri" id="impRun">取り込んで最新化</button>
+      </div>
     </div>
   </div>
 </div>
@@ -568,15 +600,34 @@ function setShare(state){
   l.textContent='共有：未接続';
 }
 function hhmm(t){const d=new Date(t);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
+function _sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 async function gasGet(){
-  const res=await fetch(gasUrl,{method:'GET'});
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  return await res.json();
+  let last;
+  for(let i=0;i<5;i++){
+    try{ const res=await fetch(gasUrl,{method:'GET',redirect:'follow'});
+      const t=await res.text();
+      if(res.ok && t && t[0]==='{') return JSON.parse(t);   // GASは初回リダイレクトでHTMLを返す事があるので再試行
+      last='非JSON応答';
+    }catch(e){ last=e.message; }
+    await _sleep(1200);
+  }
+  throw new Error(last||'GET失敗');
 }
 async function gasPost(state){
   const res=await fetch(gasUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(state)});
   if(!res.ok) throw new Error('HTTP '+res.status);
-  return await res.json();
+  const t=await res.text();
+  try{ return JSON.parse(t); }catch(e){ return {}; }   // HTML(リダイレクト)応答でも書込は成功しているので成功扱い
+}
+async function pushFull(){
+  if(!gasUrl) return false;
+  syncing=true; setShare('syncing');
+  try{
+    const res=await gasPost(stateFor(DATA,TANTO,YAKUIN));
+    dirtyIds.clear(); deletedIds.clear(); delTanto.clear(); delYakuin.clear();
+    if(res&&typeof res.rev==='number') lastRev=res.rev;
+    lastSync=Date.now(); syncing=false; setShare('on'); return true;
+  }catch(e){ syncing=false; setShare('err'); return false; }
 }
 function recPayload(r){return {id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||'',memo:r.memo||''};}
 function stateFor(records,tanto,yakuin){
@@ -700,6 +751,137 @@ $('shDisconnect').addEventListener('click',()=>{
 });
 $('shPull').addEventListener('click',()=>{ if(!gasUrl){setShStat(false,'先に接続してください');return;} pullShared(false); });
 function setShStat(ok,msg){ const s=$('shStat'); s.textContent=msg; s.className='shstat'+(ok===true?' ok':ok===false?' ng':''); }
+
+/* ---------- データ取り込み（xlsx解析：外部ライブラリ不要／DecompressionStream使用） ---------- */
+function _u16(b,o){return b[o]|(b[o+1]<<8);}
+function _u32(b,o){return (b[o]|(b[o+1]<<8)|(b[o+2]<<16)|(b[o+3]<<24))>>>0;}
+async function inflateRaw(u8){
+  const ds=new DecompressionStream('deflate-raw');
+  const ab=await new Response(new Blob([u8]).stream().pipeThrough(ds)).arrayBuffer();
+  return new Uint8Array(ab);
+}
+async function unzip(buf){
+  let eo=-1;
+  for(let i=buf.length-22;i>=0;i--){ if(_u32(buf,i)===0x06054b50){eo=i;break;} }
+  if(eo<0) throw new Error('zip: EOCDが見つかりません');
+  const cnt=_u16(buf,eo+10), cdOff=_u32(buf,eo+16);
+  const out={}; let p=cdOff;
+  for(let n=0;n<cnt;n++){
+    if(_u32(buf,p)!==0x02014b50) break;
+    const method=_u16(buf,p+10), compSize=_u32(buf,p+20);
+    const fnLen=_u16(buf,p+28), exLen=_u16(buf,p+30), cmLen=_u16(buf,p+32);
+    const lho=_u32(buf,p+42);
+    const name=new TextDecoder('utf-8').decode(buf.slice(p+46,p+46+fnLen));
+    const lfnLen=_u16(buf,lho+26), lexLen=_u16(buf,lho+28);
+    const ds=lho+30+lfnLen+lexLen;
+    const raw=buf.slice(ds,ds+compSize);
+    out[name]= method===0 ? raw : await inflateRaw(raw);
+    p+=46+fnLen+exLen+cmLen;
+  }
+  return out;
+}
+function _xmlText(s){return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');}
+function parseShared(xml){
+  const arr=[]; if(!xml) return arr;
+  const sis=xml.split('<si>').slice(1);
+  for(const si of sis){ const body=si.split('</si>')[0]; let s='';
+    const ts=body.match(/<t[^>]*>([\s\S]*?)<\/t>/g);
+    if(ts) for(const t of ts){ s+=_xmlText(t.replace(/<t[^>]*>/,'').replace(/<\/t>/,'')); }
+    arr.push(s);
+  } return arr;
+}
+function parseSheet(xml, shared){
+  const grid={}; const rows=xml.split('<row ').slice(1);
+  for(const rw of rows){
+    const rnum=parseInt((rw.match(/r="(\d+)"/)||[])[1],10); if(!rnum) continue;
+    const cells=rw.split('<c ').slice(1);
+    for(const cell of cells){
+      const ref=(cell.match(/r="([A-Z]+\d+)"/)||[])[1]; if(!ref) continue;
+      const t=(cell.match(/t="([^"]+)"/)||[])[1]||''; let val=null;
+      if(t==='inlineStr'){ const m=cell.match(/<t[^>]*>([\s\S]*?)<\/t>/); val=m?_xmlText(m[1]):''; }
+      else { const m=cell.match(/<v>([\s\S]*?)<\/v>/); if(m){ val=m[1];
+        if(t==='s') val=shared[parseInt(val,10)]||''; else if(t==='str') val=_xmlText(val); } }
+      if(val!==null){ (grid[rnum]||(grid[rnum]={}))[ref.replace(/[0-9]+/g,'')]=val; }
+    }
+  } return grid;
+}
+function serialToStamp(v){
+  const n=parseFloat(v); if(!isFinite(n)) return '';
+  const d=new Date(Math.round(n*86400000)+Date.UTC(1899,11,30)); const z=x=>('0'+x).slice(-2);
+  return d.getUTCFullYear()+'-'+z(d.getUTCMonth()+1)+'-'+z(d.getUTCDate())+' '+z(d.getUTCHours())+':'+z(d.getUTCMinutes());
+}
+/* 対応形式レジストリ（今後ここに形式を足せる） */
+const IMPORT_FORMATS=[{
+  key:'弥生リスト形式',
+  detect:(grid)=>{ for(const r in grid){ const v=Object.values(grid[r]); if(v.includes('名称')&&v.includes('フリガナ')) return true; } return false; },
+  extract:(grid,fname)=>{
+    let hr=null; for(const r of Object.keys(grid)){ const v=Object.values(grid[r]); if(v.includes('名称')&&v.includes('フリガナ')){hr=+r;break;} }
+    if(!hr) return [];
+    const h=grid[hr], col={}; for(const c in h) col[h[c]]=c;
+    const kubun = /仕入/.test(fname)?'仕入先' : (/得意|発注/.test(fname)?'得意先':'得意先');
+    const recs=[];
+    for(const r of Object.keys(grid)){ const rn=+r; if(rn<=hr) continue;
+      const row=grid[r]; const nm=(row[col['名称']]||'').trim(); if(!nm) continue;
+      const addr=[row[col['住所１']],row[col['住所２']]].filter(Boolean).join(' ').trim();
+      recs.push({name:nm,kana:(row[col['フリガナ']]||'').trim(),zip:(row[col['郵便番号']]||'').trim(),addr:addr,
+        tel:(row[col['TEL']]||'').trim(),fax:(row[col['FAX']]||'').trim(),src:kubun,
+        updated: col['更新日']?serialToStamp(row[col['更新日']]):''});
+    } return recs;
+  }
+}];
+async function parseXlsx(file){
+  const buf=new Uint8Array(await file.arrayBuffer());
+  const files=await unzip(buf);
+  const dec=u=>u?new TextDecoder('utf-8').decode(u):'';
+  const shared=parseShared(dec(files['xl/sharedStrings.xml']));
+  const sheetKey=Object.keys(files).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0];
+  if(!sheetKey) throw new Error('シートが見つかりません');
+  const grid=parseSheet(dec(files[sheetKey]), shared);
+  const fmt=IMPORT_FORMATS.find(f=>f.detect(grid));
+  if(!fmt) throw new Error('対応する形式ではありません');
+  return {records:fmt.extract(grid,file.name), fmt:fmt.key};
+}
+function mergeImported(list){
+  const idx={}; DATA.forEach(r=>{ idx[norm(r.name)]=r; });
+  let upd=0, add=0;
+  list.forEach(im=>{
+    const k=norm(im.name); const ex=idx[k];
+    if(ex){
+      ['kana','zip','addr','tel','fax'].forEach(f=>{ if(im[f]) ex[f]=im[f]; });
+      if(!ex.src.includes(im.src)) ex.src=ex.src.concat([im.src]);
+      if((im.updated||'')>(ex.updated||'')) ex.updated=im.updated;   // 新しい方（touchはしない＝弥生の更新日を尊重）
+      dirtyIds.add(ex.id); upd++;
+    }else{
+      const nr={id:uid(),name:im.name,kana:im.kana,zip:im.zip,addr:im.addr,tel:im.tel,fax:im.fax,src:[im.src],tanto:'',yakuin:'',memo:'',updated:im.updated||''};
+      DATA.push(nr); idx[k]=nr; dirtyIds.add(nr.id); add++;
+    }
+  });
+  return {upd,add};
+}
+$('btnImport').addEventListener('click',()=>{ $('impFile').value=''; $('impResult').innerHTML=''; $('impStat').textContent=''; $('impStat').className='shstat'; openMask('mImport'); });
+$('impRun').addEventListener('click',async()=>{
+  const files=[...($('impFile').files||[])];
+  if(!files.length){ $('impStat').textContent='ファイルを選んでください'; $('impStat').className='shstat ng'; return; }
+  $('impStat').textContent='解析中…'; $('impStat').className='shstat'; $('impResult').innerHTML='';
+  let all=[]; const log=$('impResult');
+  for(const f of files){
+    try{
+      const {records,fmt}=await parseXlsx(f);
+      all=all.concat(records);
+      log.insertAdjacentHTML('beforeend','<div class="impitem"><b>'+esc(f.name)+'</b>：'+records.length+'件 読込（'+esc(fmt)+'）</div>');
+    }catch(e){
+      log.insertAdjacentHTML('beforeend','<div class="impitem ng"><b>'+esc(f.name)+'</b>：読込失敗（'+esc(e.message)+'）</div>');
+    }
+  }
+  if(!all.length){ $('impStat').textContent='取り込めるデータがありませんでした'; $('impStat').className='shstat ng'; return; }
+  const {upd,add}=mergeImported(all);
+  sortData(); save(); render(); renderFilters();
+  log.insertAdjacentHTML('beforeend','<div class="impsum">更新 '+upd+' 件／新規 '+add+' 件／合計 '+DATA.length+' 社</div>');
+  $('impStat').textContent='取り込み完了。共有へ保存中…'; $('impStat').className='shstat ok';
+  if(gasUrl){ const ok=await pushFull(); $('impStat').textContent=ok?('共有へ保存しました（更新 '+upd+'／新規 '+add+'）'):'共有への保存に失敗（通信を確認してください）'; $('impStat').className='shstat '+(ok?'ok':'ng'); }
+  else { $('impStat').textContent='保存しました（更新 '+upd+'／新規 '+add+'）※共有未接続'; }
+  toast('取り込み完了：更新'+upd+'／新規'+add);
+});
 
 /* ---------- init ---------- */
 load(); renderFilters(); render(); setShare(gasUrl?'on':'off');
