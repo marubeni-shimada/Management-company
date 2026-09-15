@@ -69,7 +69,7 @@ select.f:focus{outline:none;border-color:var(--accent)}
 /* table */
 .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
 .tscroll{overflow-x:auto}
-table{border-collapse:collapse;width:100%;min-width:920px}
+table{border-collapse:collapse;width:100%;min-width:1010px}
 thead th{position:sticky;top:0;z-index:2;background:#f4f3ef;border-bottom:1px solid var(--line);text-align:left;font-size:11.5px;font-weight:800;letter-spacing:.03em;color:var(--ink2);padding:10px 12px;white-space:nowrap}
 tbody td{border-bottom:1px solid var(--line2);padding:9px 12px;vertical-align:middle}
 tbody tr:hover{background:#faf9f6}
@@ -89,6 +89,7 @@ select.inl{border:1px solid transparent;border-radius:7px;padding:5px 8px;font-s
 select.inl:hover{border-color:var(--line);background:#fbfbf9}
 select.inl:focus{outline:none;border-color:var(--accent);background:#fff}
 select.inl.empty{color:var(--ink3);font-weight:600}
+td.upd{color:var(--ink3);font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums}
 td.ops{white-space:nowrap;text-align:right}
 
 /* empty */
@@ -170,6 +171,12 @@ td.ops{white-space:nowrap;text-align:right}
       </div>
       <select class="f" id="fTanto"><option value="">担当者：すべて</option></select>
       <select class="f" id="fYakuin"><option value="">役員：すべて</option></select>
+      <select class="f" id="sortBy" title="並び替え">
+        <option value="kana">並び：フリガナ順</option>
+        <option value="updated">並び：更新日（新しい順）</option>
+        <option value="tanto">並び：担当者順</option>
+        <option value="yakuin">並び：役員順</option>
+      </select>
     </div>
   </div>
 
@@ -182,9 +189,10 @@ td.ops{white-space:nowrap;text-align:right}
           <th style="min-width:180px">住所</th>
           <th style="width:118px">TEL</th>
           <th style="width:118px">FAX</th>
-          <th style="width:138px">担当者</th>
-          <th style="width:138px">役員</th>
-          <th style="width:96px"></th>
+          <th style="width:132px">担当者</th>
+          <th style="width:132px">役員</th>
+          <th style="width:96px">更新日</th>
+          <th style="width:70px"></th>
         </tr></thead>
         <tbody id="tb"></tbody>
       </table>
@@ -290,7 +298,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbw_jN-80G7MH0h3d_L30Rlj
 /* ▲▲ 空のままなら共有ボタンから手動接続も可能 ▲▲ */
 const K_DATA='torihiki_data_v1', K_TANTO='torihiki_tanto_v1', K_YAKUIN='torihiki_yakuin_v1', K_URL='torihiki_gasurl_v1';
 let DATA=[], TANTO=[], YAKUIN=[];
-let curSrc='', curQ='', curFTanto='', curFYakuin='';
+let curSrc='', curQ='', curFTanto='', curFYakuin='', curSort='kana';
 let editId=null, masterTab='tanto';
 /* 共有(GAS) 同期用 */
 const URL_BAKED=!!GAS_URL;
@@ -308,6 +316,15 @@ function norm(s){
 }
 function kkey(r){return (r.kana||'ﾝ')+''+r.name;}
 function sortData(){DATA.sort((a,b)=>kkey(a).localeCompare(kkey(b),'ja'));}
+function nowStamp(){const d=new Date();const z=n=>('0'+n).slice(-2);return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());}
+function touch(r){r.updated=nowStamp();}
+function sortRows(rows){
+  const kc=(a,b)=>kkey(a).localeCompare(kkey(b),'ja');
+  if(curSort==='updated') return rows.sort((a,b)=>{const x=a.updated||'',y=b.updated||'';if(x===y)return kc(a,b);return x<y?1:-1;});
+  if(curSort==='tanto') return rows.sort((a,b)=>{const x=a.tanto||'~',y=b.tanto||'~';if(x===y)return kc(a,b);return x.localeCompare(y,'ja');});
+  if(curSort==='yakuin') return rows.sort((a,b)=>{const x=a.yakuin||'~',y=b.yakuin||'~';if(x===y)return kc(a,b);return x.localeCompare(y,'ja');});
+  return rows.sort(kc);
+}
 function save(){localStorage.setItem(K_DATA,JSON.stringify(DATA));localStorage.setItem(K_TANTO,JSON.stringify(TANTO));localStorage.setItem(K_YAKUIN,JSON.stringify(YAKUIN));}
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1900);}
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -315,7 +332,7 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;'
 /* ---------- load ---------- */
 function load(){
   try{const d=JSON.parse(localStorage.getItem(K_DATA)||'null'); if(Array.isArray(d)) DATA=d;}catch(e){}
-  if(!DATA.length){ DATA=SEED.map(r=>({id:uid(),name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:[r.src||'得意先'],tanto:r.tanto||'',yakuin:r.yakuin||''})); }
+  if(!DATA.length){ DATA=SEED.map(r=>({id:uid(),name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:[r.src||'得意先'],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''})); }
   DATA.forEach(r=>{if(!r.id)r.id=uid(); if(!Array.isArray(r.src))r.src=[r.src||'得意先'];});
   try{const t=JSON.parse(localStorage.getItem(K_TANTO)||'null'); if(Array.isArray(t)) TANTO=t;}catch(e){}
   try{const y=JSON.parse(localStorage.getItem(K_YAKUIN)||'null'); if(Array.isArray(y)) YAKUIN=y;}catch(e){}
@@ -342,10 +359,10 @@ function passFilter(r){
   return true;
 }
 function render(){
-  const rows=DATA.filter(passFilter);
+  const rows=sortRows(DATA.filter(passFilter));
   const tb=$('tb');
   if(!rows.length){
-    tb.innerHTML='<tr><td colspan="8"><div class="empty"><b>該当する取引先がありません</b>検索条件を変えるか、「＋ 新規取引先」で追加してください。</div></td></tr>';
+    tb.innerHTML='<tr><td colspan="9"><div class="empty"><b>該当する取引先がありません</b>検索条件を変えるか、「＋ 新規取引先」で追加してください。</div></td></tr>';
   }else{
     tb.innerHTML=rows.map(r=>{
       const bdg=r.src.map(s=>'<span class="bdg '+(BMAP[s]||'t')+'">'+esc(s)+'</span>').join('');
@@ -357,6 +374,7 @@ function render(){
         '<td class="mono">'+esc(r.fax||'')+'</td>'+
         '<td class="assign">'+assignSelect('inl',TANTO,r.tanto,'data-f="tanto" data-id="'+r.id+'"')+'</td>'+
         '<td class="assign">'+assignSelect('inl',YAKUIN,r.yakuin,'data-f="yakuin" data-id="'+r.id+'"')+'</td>'+
+        '<td class="upd">'+esc(r.updated||'')+'</td>'+
         '<td class="ops"><button class="btn ghost sm" data-edit="'+r.id+'">編集</button></td>'+
       '</tr>';
     }).join('');
@@ -374,7 +392,7 @@ function renderFilters(){
 $('tb').addEventListener('change',e=>{
   const sel=e.target.closest('select[data-f]'); if(!sel) return;
   const r=DATA.find(x=>x.id===sel.dataset.id); if(!r) return;
-  r[sel.dataset.f]=sel.value; dirtyIds.add(r.id); save(); scheduleSync();
+  r[sel.dataset.f]=sel.value; touch(r); dirtyIds.add(r.id); save(); scheduleSync();
   sel.classList.toggle('empty',!sel.value);
   toast(sel.value?('設定：'+sel.value):'設定を解除');
 });
@@ -393,6 +411,7 @@ $('segSrc').addEventListener('click',e=>{
 $('q').addEventListener('input',e=>{curQ=e.target.value.trim();render();});
 $('fTanto').addEventListener('change',e=>{curFTanto=e.target.value;render();});
 $('fYakuin').addEventListener('change',e=>{curFYakuin=e.target.value;render();});
+$('sortBy').addEventListener('change',e=>{curSort=e.target.value;render();});
 
 /* ---------- edit modal ---------- */
 function fillAssignSelects(){
@@ -432,8 +451,8 @@ $('edSave').addEventListener('click',()=>{
     tel:$('edTel').value.trim(),fax:$('edFax').value.trim(),tanto:$('edTanto').value,yakuin:$('edYakuin').value};
   let savedId;
   if(editId){ const r=DATA.find(x=>x.id===editId); Object.assign(r,rec); if(!r.src.length)r.src=[$('edSrc').value];
-    if(!r.src.includes($('edSrc').value)) r.src=[$('edSrc').value].concat(r.src.filter(s=>s!==$('edSrc').value)); savedId=r.id; }
-  else { const nr=Object.assign({id:uid(),src:[$('edSrc').value]},rec); DATA.push(nr); savedId=nr.id; }
+    if(!r.src.includes($('edSrc').value)) r.src=[$('edSrc').value].concat(r.src.filter(s=>s!==$('edSrc').value)); touch(r); savedId=r.id; }
+  else { const nr=Object.assign({id:uid(),src:[$('edSrc').value]},rec); touch(nr); DATA.push(nr); savedId=nr.id; }
   dirtyIds.add(savedId);
   sortData(); save(); scheduleSync(); render(); closeMask('mEdit');
   toast(editId?'保存しました':'追加しました：'+name);
@@ -477,11 +496,11 @@ $('mList').addEventListener('click',e=>{
   if(del){const i=+del.dataset.del,nm=list[i];const used=DATA.filter(r=>r[fld]===nm).length;
     if(!confirm('「'+nm+'」を削除します'+(used?'（'+used+'社に設定中。設定は未設定に戻ります）':'')+'。よろしいですか？'))return;
     list.splice(i,1); (fld==='tanto'?delTanto:delYakuin).add(nm);
-    DATA.forEach(r=>{if(r[fld]===nm){r[fld]='';dirtyIds.add(r.id);}}); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('削除しました');}
+    DATA.forEach(r=>{if(r[fld]===nm){r[fld]='';touch(r);dirtyIds.add(r.id);}}); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('削除しました');}
   if(ren){const i=+ren.dataset.ren,old=list[i];const nv=prompt('新しい名称',old);if(nv==null)return;const v=nv.trim();if(!v||v===old)return;
     if(list.includes(v)){toast('すでにあります');return;}
     list[i]=v; (fld==='tanto'?delTanto:delYakuin).add(old);
-    DATA.forEach(r=>{if(r[fld]===old){r[fld]=v;dirtyIds.add(r.id);}}); list.sort((a,b)=>a.localeCompare(b,'ja')); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('変更しました');}
+    DATA.forEach(r=>{if(r[fld]===old){r[fld]=v;touch(r);dirtyIds.add(r.id);}}); list.sort((a,b)=>a.localeCompare(b,'ja')); save(); scheduleSync(); renderMaster(); renderFilters(); render(); toast('変更しました');}
 });
 $('btnReset').addEventListener('click',()=>{
   if(gasUrl){
@@ -496,10 +515,10 @@ $('btnReset').addEventListener('click',()=>{
 
 /* ---------- CSV ---------- */
 $('btnExport').addEventListener('click',()=>{
-  const rows=DATA.filter(passFilter);
-  const head=['会社名','フリガナ','郵便番号','住所','TEL','FAX','区分','担当者','役員'];
+  const rows=sortRows(DATA.filter(passFilter));
+  const head=['会社名','フリガナ','郵便番号','住所','TEL','FAX','区分','担当者','役員','更新日'];
   const q=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
-  const lines=[head.map(q).join(',')].concat(rows.map(r=>[r.name,r.kana,r.zip,r.addr,r.tel,r.fax,r.src.join('/'),r.tanto,r.yakuin].map(q).join(',')));
+  const lines=[head.map(q).join(',')].concat(rows.map(r=>[r.name,r.kana,r.zip,r.addr,r.tel,r.fax,r.src.join('/'),r.tanto,r.yakuin,r.updated||''].map(q).join(',')));
   const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='取引先一覧.csv';a.click();
   toast('CSVを出力しました（'+rows.length+'件）');
@@ -535,10 +554,10 @@ async function gasPost(state){
   return await res.json();
 }
 function stateFor(records,tanto,yakuin){
-  return {records:records.map(r=>({id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||''})),tanto:tanto.slice(),yakuin:yakuin.slice()};
+  return {records:records.map(r=>({id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''})),tanto:tanto.slice(),yakuin:yakuin.slice()};
 }
 function normRemote(remote){
-  const recs=(remote&&remote.records||[]).map(r=>({id:r.id||uid(),name:r.name||'',kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:(r.src?String(r.src).split('/'):['得意先']),tanto:r.tanto||'',yakuin:r.yakuin||''}));
+  const recs=(remote&&remote.records||[]).map(r=>({id:r.id||uid(),name:r.name||'',kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:(r.src?String(r.src).split('/'):['得意先']),tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''}));
   return {records:recs,tanto:(remote&&remote.tanto||[]).slice(),yakuin:(remote&&remote.yakuin||[]).slice()};
 }
 function mergeWithRemote(remote){
