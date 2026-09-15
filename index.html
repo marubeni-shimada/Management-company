@@ -280,7 +280,7 @@ td.ops{white-space:nowrap;text-align:right}
         弥生販売から出力した <b>得意先リスト／仕入先リスト</b>（Excel .xlsx）を選ぶと、会社名で照合して
         <b>住所・TEL・FAX・郵便番号・更新日を最新化</b>し、無い会社は追加します。<br>
         <b>担当者・役員・備考（手入力分）はそのまま保持</b>します。ファイル名に「得意先／仕入先」が入っていれば区分を自動判定します。
-        <div style="margin-top:8px;color:var(--ink3)">対応形式：弥生販売「リスト形式」得意先／仕入先（今後、他の形式も追加できます）</div>
+        <div style="margin-top:8px;color:var(--ink3)">対応形式：弥生販売「リスト形式」得意先／仕入先、どっと原価「発注者一覧（得意先一覧表）」（今後さらに追加できます）</div>
       </div>
       <div class="urlrow" style="margin-top:14px">
         <input type="file" id="impFile" accept=".xlsx" multiple style="flex:1">
@@ -791,9 +791,12 @@ function parseShared(xml){
   } return arr;
 }
 function parseSheet(xml, shared){
-  const grid={}; const rows=xml.split('<row ').slice(1);
+  const grid={}; let maxRow=Infinity;
+  const dm=xml.match(/<dimension ref="([^"]+)"/);
+  if(dm){ const parts=dm[1].split(':'); const num=parts[parts.length-1].match(/\d+/); if(num) maxRow=parseInt(num[0],10); }
+  const rows=xml.split('<row ').slice(1);
   for(const rw of rows){
-    const rnum=parseInt((rw.match(/r="(\d+)"/)||[])[1],10); if(!rnum) continue;
+    const rnum=parseInt((rw.match(/r="(\d+)"/)||[])[1],10); if(!rnum||rnum>maxRow) continue;
     const cells=rw.split('<c ').slice(1);
     for(const cell of cells){
       const ref=(cell.match(/r="([A-Z]+\d+)"/)||[])[1]; if(!ref) continue;
@@ -826,6 +829,19 @@ const IMPORT_FORMATS=[{
       recs.push({name:nm,kana:(row[col['フリガナ']]||'').trim(),zip:(row[col['郵便番号']]||'').trim(),addr:addr,
         tel:(row[col['TEL']]||'').trim(),fax:(row[col['FAX']]||'').trim(),src:kubun,
         updated: col['更新日']?serialToStamp(row[col['更新日']]):''});
+    } return recs;
+  }
+},{
+  key:'発注者一覧（どっと原価）',
+  detect:(grid)=>{ for(const r in grid){ const v=Object.values(grid[r]).map(String); if(v.includes('得意先一覧表')) return true; if(v.includes('得意先')&&v.includes('住所')&&!v.includes('名称')) return true; } return false; },
+  extract:(grid)=>{
+    // 固定列: B=コード C=名称 D=フリガナ E=TEL F=郵便番号 G=住所（発注者=得意先扱い）
+    const recs=[];
+    for(const r of Object.keys(grid)){ const row=grid[r]; const b=row['B'];
+      if(b==null||!/^\d+$/.test(String(b).trim())) continue;
+      const nm=(row['C']||'').trim(); if(!nm) continue;
+      recs.push({name:nm,kana:(row['D']||'').trim(),zip:(row['F']||'').trim(),addr:(row['G']||'').trim(),
+        tel:(row['E']||'').trim(),fax:'',src:'発注者',updated:''});
     } return recs;
   }
 }];
