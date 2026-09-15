@@ -304,7 +304,7 @@ let editId=null, masterTab='tanto';
 const URL_BAKED=!!GAS_URL;
 let gasUrl=GAS_URL||localStorage.getItem(K_URL)||'';
 let dirtyIds=new Set(), deletedIds=new Set(), delTanto=new Set(), delYakuin=new Set();
-let syncTimer=null, pollTimer=null, lastSync=0, syncing=false;
+let syncTimer=null, pollTimer=null, lastSync=0, syncing=false, lastRev=-1;
 
 /* ---------- util ---------- */
 const $=id=>document.getElementById(id);
@@ -562,8 +562,9 @@ async function gasPost(state){
   if(!res.ok) throw new Error('HTTP '+res.status);
   return await res.json();
 }
+function recPayload(r){return {id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''};}
 function stateFor(records,tanto,yakuin){
-  return {records:records.map(r=>({id:r.id,name:r.name,kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:r.src||[],tanto:r.tanto||'',yakuin:r.yakuin||'',updated:r.updated||''})),tanto:tanto.slice(),yakuin:yakuin.slice()};
+  return {records:records.map(recPayload),tanto:tanto.slice(),yakuin:yakuin.slice()};
 }
 function normRemote(remote){
   const recs=(remote&&remote.records||[]).map(r=>({id:r.id||uid(),name:r.name||'',kana:r.kana||'',zip:r.zip||'',addr:r.addr||'',tel:r.tel||'',fax:r.fax||'',src:Array.isArray(r.src)?r.src:(r.src?String(r.src).split('/'):['得意先']),tanto:r.tanto||'',yakuin:r.yakuin||'',updated:fixStamp(r.updated)}));
@@ -591,16 +592,21 @@ function scheduleSync(){
 }
 async function syncPush(){
   if(!gasUrl||syncing) return;
+  if(!dirtyIds.size && !deletedIds.size && !delTanto.size && !delYakuin.size) return;
   syncing=true; setShare('syncing');
+  const upserts=DATA.filter(r=>dirtyIds.has(r.id)).map(recPayload);
+  const deletes=[...deletedIds];
+  const sentDirty=[...dirtyIds], sentDel=[...deletedIds];
+  const body={upserts:upserts,deletes:deletes,tanto:TANTO.slice(),yakuin:YAKUIN.slice()};
   try{
-    const remote=await gasGet();
-    const merged=mergeWithRemote(remote);
-    adopt(merged);
-    await gasPost(stateFor(DATA,TANTO,YAKUIN));
-    dirtyIds.clear(); deletedIds.clear(); delTanto.clear(); delYakuin.clear();
-    lastSync=Date.now(); setShare('on');
-  }catch(e){ setShare('err'); toast('共有への保存に失敗しました。通信を確認してください'); }
-  syncing=false;
+    const res=await gasPost(body);
+    sentDirty.forEach(id=>dirtyIds.delete(id));   // 送った分だけ消す（送信中の新規変更は残す）
+    sentDel.forEach(id=>deletedIds.delete(id));
+    delTanto.clear(); delYakuin.clear();
+    if(res&&typeof res.rev==='number') lastRev=res.rev;
+    lastSync=Date.now(); syncing=false;
+    if(dirtyIds.size||deletedIds.size){ setShare('syncing'); scheduleSync(); }else setShare('on');
+  }catch(e){ syncing=false; setShare('err'); clearTimeout(syncTimer); syncTimer=setTimeout(syncPush,4000); }
 }
 async function pullShared(silent){
   if(!gasUrl||syncing) return;
@@ -608,12 +614,18 @@ async function pullShared(silent){
   try{
     const remote=await gasGet();
     adopt(mergeWithRemote(remote));
+    if(remote&&typeof remote.rev==='number') lastRev=remote.rev;
     lastSync=Date.now(); setShare('on');
     if(!silent) toast('共有から取り込みました（'+DATA.length+'件）');
   }catch(e){ setShare('err'); if(!silent) toast('共有からの取得に失敗しました'); }
   syncing=false;
 }
-function startPoll(){ clearInterval(pollTimer); pollTimer=setInterval(()=>{ if(gasUrl&&!syncing&&!dirtyIds.size&&!deletedIds.size&&!document.querySelector('.mask.open')) pullShared(true); },25000); }
+function startPoll(){ clearInterval(pollTimer); pollTimer=setInterval(async()=>{
+  if(!gasUrl||syncing||dirtyIds.size||deletedIds.size||document.querySelector('.mask.open')) return;
+  try{ const m=await fetch(gasUrl+'?meta=1',{redirect:'follow'}).then(r=>r.json());
+    if(m&&typeof m.rev==='number'&&m.rev!==lastRev) pullShared(true);
+  }catch(e){}
+},20000); }
 /* 起動時：共有URLが設定済みなら自動接続。共有が空なら初回だけローカル(796件)を投入 */
 async function initShared(){
   if(!gasUrl) return;
@@ -622,11 +634,13 @@ async function initShared(){
     const remote=await gasGet();
     if((remote&&remote.records||[]).length===0){
       DATA.forEach(r=>dirtyIds.add(r.id));
-      await gasPost(stateFor(DATA,TANTO,YAKUIN)); dirtyIds.clear();
+      const res=await gasPost(stateFor(DATA,TANTO,YAKUIN)); dirtyIds.clear();
+      if(res&&typeof res.rev==='number') lastRev=res.rev;
     }else{
       // 共有が正：起動時はローカルを混ぜず共有の内容をそのまま採用（二重化防止）
       dirtyIds.clear(); deletedIds.clear(); delTanto.clear(); delYakuin.clear();
       adopt(normRemote(remote));
+      if(typeof remote.rev==='number') lastRev=remote.rev;
     }
     lastSync=Date.now(); setShare('on'); syncing=false; startPoll();
   }catch(e){ syncing=false; setShare('err'); }
@@ -647,12 +661,14 @@ $('shConnect').addEventListener('click',async()=>{
     const rc=(remote&&remote.records||[]).length;
     if(rc===0){
       if(!confirm('共有先はまだ空です。このPCのデータ（'+DATA.length+'件）を共有の初期データとして登録します。よろしいですか？')){ gasUrl=''; setShStat(false,'キャンセルしました'); return; }
-      DATA.forEach(r=>dirtyIds.add(r.id)); TANTO.forEach(n=>{});
-      await gasPost(stateFor(DATA,TANTO,YAKUIN)); dirtyIds.clear();
+      DATA.forEach(r=>dirtyIds.add(r.id));
+      const res=await gasPost(stateFor(DATA,TANTO,YAKUIN)); dirtyIds.clear();
+      if(res&&typeof res.rev==='number') lastRev=res.rev;
     }else{
       if(!confirm('共有先にすでに '+rc+' 件あります。共有の内容をこのPCに取り込みます（このPCのローカル内容は共有側に置き換わります）。よろしいですか？')){ gasUrl=''; setShStat(false,'キャンセルしました'); return; }
       dirtyIds.clear(); deletedIds.clear(); delTanto.clear(); delYakuin.clear();
       adopt(normRemote(remote));
+      if(typeof remote.rev==='number') lastRev=remote.rev;
     }
     localStorage.setItem(K_URL,gasUrl); lastSync=Date.now(); setShare('on'); startPoll();
     $('shDisconnect').style.visibility='visible';
