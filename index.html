@@ -145,6 +145,9 @@ td.ops{white-space:nowrap;text-align:right}
 .fld label{font-size:11.5px;font-weight:800;color:var(--ink2);letter-spacing:.02em}
 .fld input,.fld select,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;background:#fbfbf9;width:100%;font-family:inherit;resize:vertical}
 .fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--accent);background:#fff}
+.totop{position:fixed;right:20px;bottom:22px;z-index:40;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:24px;padding:11px 18px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 16px rgba(20,20,25,.22);opacity:0;transform:translateY(12px);pointer-events:none;transition:.18s}
+.totop.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.totop:hover{background:var(--accent-d);border-color:var(--accent-d)}
 .srcchecks{display:flex;gap:14px;flex-wrap:wrap;padding:8px 2px}
 .srcchecks label{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:13px;cursor:pointer}
 .srcchecks input{width:16px;height:16px}
@@ -384,6 +387,7 @@ td.ops{white-space:nowrap;text-align:right}
 </div>
 
 <div class="toast" id="toast"></div>
+<button id="toTop" class="totop" title="一番上に戻る">↑ 上に戻る</button>
 
 <script>
 "use strict";
@@ -1070,6 +1074,13 @@ function dedupeData(){
 
 /* 未送信の変更があるまま閉じる場合は警告（楽観的更新のデータ保護） */
 window.addEventListener('beforeunload',e=>{ if(gasUrl && (dirtyIds.size||deletedIds.size||mastersDirty||syncing)){ e.preventDefault(); e.returnValue=''; } });
+
+/* 一番上に戻るボタン（下にスクロールすると表示） */
+(function(){ const b=$('toTop'); if(!b) return;
+  b.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+  const upd=()=>b.classList.toggle('show', window.scrollY>400);
+  window.addEventListener('scroll',upd,{passive:true}); upd();
+})();
 
 /* ---------- init ---------- */
 load(); renderFilters(); render(); setShare(gasUrl?'on':'off'); renderAdmin();
