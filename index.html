@@ -58,7 +58,25 @@ header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:1
 .impsum{margin-top:10px;font-size:13px;font-weight:800;color:var(--ink)}
 
 /* toolbar */
-.toolbar{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow);margin-bottom:14px}
+.toolbar{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:11px 14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);margin-bottom:12px}
+.tbar-main{display:flex;gap:12px;align-items:center}
+.tbar-filt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line2)}
+.count{font-size:12px;font-weight:800;color:var(--ink2);white-space:nowrap}
+/* 五十音インデックス帯 */
+.gojuon{display:flex;align-items:center;gap:3px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;margin-bottom:12px;box-shadow:var(--shadow);position:sticky;top:0;z-index:6}
+.gojuon .gj-lab{font-size:11px;font-weight:800;color:var(--ink3);margin-right:6px}
+.gojuon button{border:1px solid var(--line);background:#fbfbf9;color:var(--ink2);border-radius:7px;min-width:30px;padding:5px 8px;font-size:13px;font-weight:800;cursor:pointer}
+.gojuon button:hover{border-color:var(--accent);color:var(--accent);background:var(--chip-t)}
+tr.grouphdr td{background:#eef1ee;color:var(--accent-d);font-weight:800;font-size:12px;letter-spacing:.08em;padding:5px 12px;border-bottom:1px solid var(--line);scroll-margin-top:120px}
+tr.grouphdr{scroll-margin-top:120px}
+tbody tr.alt td{background:#faf9f7}
+.tablewrap.idx thead th{top:44px}
+td.ops{white-space:normal}
+td.ops .btn{display:block;width:100%;margin:0 0 3px;padding:5px 4px}
+td.ops .btn:last-child{margin-bottom:0}
+td.ops .btn.del{color:var(--danger)}
+td.ops .btn.del:hover{background:var(--danger-bg);border-color:#f0c9c6}
+.btn.share.on,.btn#btnAdmin.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .search{position:relative;flex:1;min-width:220px}
 .search input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 12px 9px 34px;font-size:14px;background:#fbfbf9}
 .search input:focus{outline:none;border-color:var(--accent);background:#fff}
@@ -78,7 +96,8 @@ table{border-collapse:collapse;width:100%;min-width:980px;table-layout:fixed}
 td{overflow-wrap:anywhere}
 thead th{position:sticky;top:0;z-index:2;background:#f4f3ef;border-bottom:1px solid var(--line);text-align:left;font-size:11.5px;font-weight:800;letter-spacing:.03em;color:var(--ink2);padding:10px 12px;white-space:nowrap}
 tbody td{border-bottom:1px solid var(--line2);padding:9px 12px;vertical-align:middle}
-tbody tr:hover{background:#faf9f6}
+tbody tr:hover td{background:#eef4f2}
+tbody tr.grouphdr:hover td{background:#eef1ee}
 tbody tr:last-child td{border-bottom:0}
 .c-name{font-weight:700;font-size:13.5px;line-height:1.3}
 .c-kana{color:var(--ink3);font-size:11px;font-weight:600;margin-top:1px}
@@ -187,6 +206,7 @@ td.ops{white-space:nowrap;text-align:right}
     </div>
     <div class="hdr-actions">
       <button class="btn share" id="btnShare"><span class="dot"></span><span id="shareLbl">共有：未接続</span></button>
+      <button class="btn" id="btnAdmin" title="削除など管理操作にはMicrosoftアカウントでサインイン">管理者ログイン</button>
       <button class="btn" id="btnImport">データ取り込み</button>
       <button class="btn" id="btnMaster">担当者・役員マスタ</button>
       <button class="btn" id="btnPrint">印刷 / PDF</button>
@@ -196,11 +216,14 @@ td.ops{white-space:nowrap;text-align:right}
   </header>
 
   <div class="toolbar">
-    <div class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="q" type="search" placeholder="会社名・フリガナ・住所・TELで検索" autocomplete="off">
+    <div class="tbar-main">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="q" type="search" placeholder="会社名・フリガナ・住所・TELで検索" autocomplete="off">
+      </div>
+      <span class="count" id="cnt">—</span>
     </div>
-    <div class="filt">
+    <div class="tbar-filt">
       <div class="seg" id="segSrc">
         <button data-src="" class="on">すべて</button>
         <button data-src="得意先">得意先</button>
@@ -218,6 +241,8 @@ td.ops{white-space:nowrap;text-align:right}
     </div>
   </div>
 
+  <div class="gojuon" id="gojuon" style="display:none"></div>
+
   <div class="tablewrap">
     <div class="tscroll">
       <table>
@@ -229,14 +254,13 @@ td.ops{white-space:nowrap;text-align:right}
           <th style="width:11%">役員</th>
           <th style="width:19%">備考</th>
           <th style="width:8%">更新日</th>
-          <th style="width:56px"></th>
+          <th style="width:66px">操作</th>
         </tr></thead>
         <tbody id="tb"></tbody>
       </table>
     </div>
     <div class="foot">
-      <span id="cnt">—</span>
-      <span>フリガナ順　／　データはこのPCのブラウザに保存</span>
+      <span id="footNote">データは共有（全員で同じ内容）。並び替え・絞り込みは各自の画面のみ。</span>
     </div>
   </div>
 </div>
@@ -436,7 +460,7 @@ function load(){
   DATA.forEach(r=>{if(!r.id)r.id=uid(); if(!Array.isArray(r.src))r.src=[r.src||'得意先'];});
   try{const t=JSON.parse(localStorage.getItem(K_TANTO)||'null'); if(Array.isArray(t)) TANTO=t;}catch(e){}
   try{const y=JSON.parse(localStorage.getItem(K_YAKUIN)||'null'); if(Array.isArray(y)) YAKUIN=y;}catch(e){}
-  sortData(); save();
+  dedupeData(); sortData(); save();
 }
 
 /* ---------- render ---------- */
@@ -458,6 +482,26 @@ function passFilter(r){
   }
   return true;
 }
+/* 五十音の行判定＋索引バー（フリガナ順のときだけ） */
+const _GYO=[['ア','アイウエオァィゥェォヴ'],['カ','カキクケコガギグゲゴヵヶ'],['サ','サシスセソザジズゼゾ'],['タ','タチツテトダヂヅデドッ'],['ナ','ナニヌネノ'],['ハ','ハヒフヘホバビブベボパピプペポ'],['マ','マミムメモ'],['ヤ','ヤユヨャュョ'],['ラ','ラリルレロ'],['ワ','ワヲンヮ']];
+function gojuonGroup(sk){
+  const c=(sk||'').charAt(0); if(!c) return '他';
+  if(/[0-9０-９]/.test(c)) return '数字';
+  for(const g of _GYO){ if(g[1].indexOf(c)>=0) return g[0]; }
+  if(/[A-Za-zＡ-Ｚａ-ｚ]/.test(c)) return '英字';
+  return '他';
+}
+function buildGojuon(seen){
+  const el=$('gojuon'); if(!el) return;
+  const tw=document.querySelector('.tablewrap');
+  if(!seen){ el.style.display='none'; if(tw)tw.classList.remove('idx'); return; }
+  const order=['ア','カ','サ','タ','ナ','ハ','マ','ヤ','ラ','ワ','英字','数字','他'];
+  const present=order.filter(k=>seen.indexOf(k)>=0);
+  if(present.length<2){ el.style.display='none'; if(tw)tw.classList.remove('idx'); return; }
+  el.innerHTML='<span class="gj-lab">五十音で移動</span>'+present.map(k=>'<button type="button" data-jump="grp-'+k+'">'+k+'</button>').join('');
+  el.style.display='flex'; if(tw)tw.classList.add('idx');
+}
+document.addEventListener('click',e=>{ const b=e.target.closest('#gojuon [data-jump]'); if(!b)return; const t=document.getElementById(b.dataset.jump); if(t)t.scrollIntoView({block:'start',behavior:'smooth'}); });
 function render(){
   const rows=sortRows(DATA.filter(passFilter));
   const tb=$('tb');
@@ -466,22 +510,28 @@ function render(){
     tb.innerHTML= loading
       ? '<tr><td colspan="8"><div class="empty"><b>共有から読み込み中…</b>少しお待ちください。</div></td></tr>'
       : '<tr><td colspan="8"><div class="empty"><b>該当する取引先がありません</b>検索条件を変えるか、「＋ 新規取引先」で追加してください。</div></td></tr>';
+    buildGojuon(null);
   }else{
-    tb.innerHTML=rows.map(r=>{
+    let html=''; let curG=null; const seen=[]; let n=0;
+    rows.forEach(r=>{
+      if(curSort==='kana'){ const g=gojuonGroup(sortKey(r.kana)); if(g!==curG){ curG=g; if(seen.indexOf(g)<0)seen.push(g); html+='<tr class="grouphdr" id="grp-'+g+'"><td colspan="8">'+g+'</td></tr>'; } }
       const bdg=r.src.map(s=>'<span class="bdg '+(BMAP[s]||'t')+'">'+esc(s)+'</span>').join('');
       const addr=(r.zip?'<span class="zip">〒'+esc(r.zip)+'</span>':'')+(r.addr?'<div>'+esc(r.addr)+'</div>':'');
       const telfax=(r.tel?'<div class="mono">'+esc(r.tel)+'</div>':'')+(r.fax?'<div class="mono fax">FAX '+esc(r.fax)+'</div>':'');
-      return '<tr data-id="'+r.id+'">'+
-        '<td><div class="c-name">'+esc(r.name)+'<span class="badges">'+bdg+'</span></div>'+((dispKana(r.kana,r.name))?'<div class="c-kana">'+esc(dispKana(r.kana,r.name))+'</div>':'')+'</td>'+
+      const dk=dispKana(r.kana,r.name);
+      html+='<tr data-id="'+r.id+'"'+((n++%2)?' class="alt"':'')+'>'+
+        '<td><div class="c-name">'+esc(r.name)+'<span class="badges">'+bdg+'</span></div>'+(dk?'<div class="c-kana">'+esc(dk)+'</div>':'')+'</td>'+
         '<td class="addr">'+addr+'</td>'+
         '<td class="telfax">'+telfax+'</td>'+
         '<td class="assign">'+assignSelect('inl',TANTO,r.tanto,'data-f="tanto" data-id="'+r.id+'"')+'<span class="printonly">'+esc(r.tanto||'')+'</span></td>'+
         '<td class="assign">'+assignSelect('inl',YAKUIN,r.yakuin,'data-f="yakuin" data-id="'+r.id+'"')+'<span class="printonly">'+esc(r.yakuin||'')+'</span></td>'+
         '<td class="memo" contenteditable="true" spellcheck="false" data-memo="'+r.id+'" data-ph="メモを入力">'+esc(r.memo||'')+'</td>'+
         '<td class="upd">'+esc(r.updated||'')+'</td>'+
-        '<td class="ops"><button class="btn ghost sm" data-edit="'+r.id+'">編集</button></td>'+
+        '<td class="ops"><button class="btn ghost sm" data-edit="'+r.id+'">編集</button><button class="btn ghost sm del" data-del="'+r.id+'" title="削除（管理者のみ）">削除</button></td>'+
       '</tr>';
-    }).join('');
+    });
+    tb.innerHTML=html;
+    buildGojuon(curSort==='kana'?seen:null);
   }
   $('cnt').textContent='表示 '+rows.length+' 件 ／ 全 '+DATA.length+' 件';
   $('statLine').textContent='全 '+DATA.length+' 社';
@@ -501,6 +551,7 @@ $('tb').addEventListener('change',e=>{
   toast(sel.value?('設定：'+sel.value):'設定を解除');
 });
 $('tb').addEventListener('click',e=>{
+  const d=e.target.closest('[data-del]'); if(d){ tryDelete(d.dataset.del); return; }
   const b=e.target.closest('[data-edit]'); if(!b) return;
   openEdit(b.dataset.edit);
 });
@@ -721,7 +772,9 @@ function mergeWithRemote(remote){
 function adopt(merged){
   DATA=merged.records; TANTO=merged.tanto; YAKUIN=merged.yakuin;
   DATA.forEach(r=>{if(!r.id)r.id=uid(); if(!Array.isArray(r.src))r.src=[r.src||'得意先'];});
+  const rm=dedupeData();   // 会社名＋住所＋連絡先が同じものを1件に統合
   sortData(); save(); renderFilters(); render();
+  if(rm && gasUrl){ toast('重複 '+rm+'件を統合しました'); scheduleSync(); }
 }
 function scheduleSync(){
   if(!gasUrl) return;
@@ -971,11 +1024,51 @@ $('impRun').addEventListener('click',async()=>{
   toast('取り込み完了：更新'+upd+'／新規'+add);
 });
 
+/* ---------- 管理者ログイン（パスワード方式・実装がシンプル） ---------- */
+/* ▼管理者パスワード。ここを変えて運用してください。※クライアント側のため厳密な秘匿ではありません（社内の誤削除抑止用） */
+const ADMIN_PW='0000';
+let isAdmin=false;
+function renderAdmin(){ const b=$('btnAdmin'); if(!b)return; b.textContent=isAdmin?'管理者：ログイン中':'管理者ログイン'; b.classList.toggle('on',isAdmin); }
+$('btnAdmin').addEventListener('click',()=>{
+  if(isAdmin){ if(confirm('管理者ログインを解除しますか？')){ isAdmin=false; renderAdmin(); toast('管理者を解除しました'); } return; }
+  const p=prompt('管理者パスワードを入力してください'); if(p==null) return;
+  if(p===ADMIN_PW){ isAdmin=true; renderAdmin(); toast('管理者としてログインしました'); }
+  else toast('パスワードが違います');
+});
+function tryDelete(id){
+  const r=DATA.find(x=>x.id===id); if(!r)return;
+  if(!isAdmin){ alert('権限がありません。\n削除は管理者のみ可能です。右上の「管理者ログイン」からパスワードを入力してください。'); return; }
+  if(!confirm('「'+r.name+'」を削除します。よろしいですか？')) return;
+  deletedIds.add(id); dirtyIds.delete(id);
+  DATA=DATA.filter(x=>x.id!==id); save(); scheduleSync(); render(); toast('削除しました');
+}
+
+/* ---------- 重複統合：会社名の頭が同じ＋住所＋連絡先が同じなら1件に（工事名/支店違いをまとめる。別会社は誤統合しない） ---------- */
+function _n(s){return (s||'').normalize('NFKC').replace(/[\s　\-ー()（）]/g,'').toUpperCase();}
+function _baseTok(name){return (name||'').split(/[\s　]/)[0];}   // 会社名の頭（最初のスペースまで）＝工事名/支店の前
+function dedupeData(){
+  const groups={};
+  DATA.forEach(r=>{ if(!(r.name&&r.addr&&(r.tel||r.fax))) return; const k=norm(_baseTok(r.name))+'|'+_n(r.addr)+'|'+_n(r.tel||r.fax); (groups[k]=groups[k]||[]).push(r); });
+  const removeIds=new Set(); let removed=0;
+  Object.keys(groups).forEach(k=>{ const g=groups[k]; if(g.length<2) return;
+    g.sort((a,b)=>(a.name||'').length-(b.name||'').length);   // 最短名＝親会社を残す
+    const m=g[0];
+    for(let i=1;i<g.length;i++){ const r=g[i];
+      ['tanto','yakuin','memo','kana','zip','fax','tel'].forEach(f=>{ if(!m[f]&&r[f]) m[f]=r[f]; });
+      (r.src||[]).forEach(s=>{ if(!m.src.includes(s)) m.src.push(s); });
+      if((r.updated||'')>(m.updated||'')) m.updated=r.updated;
+      dirtyIds.add(m.id); deletedIds.add(r.id); removeIds.add(r.id); removed++;
+    }
+  });
+  if(removed){ DATA=DATA.filter(r=>!removeIds.has(r.id)); }
+  return removed;
+}
+
 /* 未送信の変更があるまま閉じる場合は警告（楽観的更新のデータ保護） */
 window.addEventListener('beforeunload',e=>{ if(gasUrl && (dirtyIds.size||deletedIds.size||mastersDirty||syncing)){ e.preventDefault(); e.returnValue=''; } });
 
 /* ---------- init ---------- */
-load(); renderFilters(); render(); setShare(gasUrl?'on':'off');
+load(); renderFilters(); render(); setShare(gasUrl?'on':'off'); renderAdmin();
 if(URL_BAKED){ $('shDisconnect').style.display='none'; }
 if(gasUrl){ initShared(); }
 </script>
