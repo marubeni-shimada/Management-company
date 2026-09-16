@@ -145,6 +145,9 @@ td.ops{white-space:nowrap;text-align:right}
 .fld label{font-size:11.5px;font-weight:800;color:var(--ink2);letter-spacing:.02em}
 .fld input,.fld select,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;background:#fbfbf9;width:100%;font-family:inherit;resize:vertical}
 .fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--accent);background:#fff}
+.srcchecks{display:flex;gap:14px;flex-wrap:wrap;padding:8px 2px}
+.srcchecks label{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:13px;cursor:pointer}
+.srcchecks input{width:16px;height:16px}
 .dupwarn{display:none;margin-top:10px;background:var(--warn-bg);border:1px solid #f0dcb8;color:var(--warn);border-radius:8px;padding:9px 12px;font-size:12.5px;font-weight:600}
 .dupwarn.show{display:block}
 
@@ -277,8 +280,12 @@ td.ops{white-space:nowrap;text-align:right}
         <div class="fld"><label>TEL</label><input id="edTel" placeholder="0547-36-2111"></div>
         <div class="fld full"><label>住所</label><input id="edAddr" placeholder="島田市向島4532"></div>
         <div class="fld"><label>FAX</label><input id="edFax"></div>
-        <div class="fld"><label>区分</label>
-          <select id="edSrc"><option value="得意先">得意先</option><option value="仕入先">仕入先</option><option value="発注者">発注者</option></select>
+        <div class="fld"><label>区分（複数可）</label>
+          <div class="srcchecks">
+            <label><input type="checkbox" class="edSrcC" value="得意先">得意先</label>
+            <label><input type="checkbox" class="edSrcC" value="仕入先">仕入先</label>
+            <label><input type="checkbox" class="edSrcC" value="発注者">発注者</label>
+          </div>
         </div>
         <div class="fld"><label>担当者</label><select id="edTanto"></select></div>
         <div class="fld"><label>役員</label><select id="edYakuin"></select></div>
@@ -419,17 +426,14 @@ function dispKana(k,name){
   if(tK)s=s.replace(/(ｶﾌﾞ|カブ)$/,''); if(tY)s=s.replace(/(ﾕｳ|ユウ)$/,'');
   return s.trim();
 }
-function sortKey(kana){
-  let s=(kana||'').normalize('NFKC');
-  s=s.replace(/株式会社|有限会社|合同会社|㈱|㈲|㈾/g,'');
-  s=s.replace(/[(（](カブ|ユウ|カ|ユ|ゴウ|ザイ|カナヤ)[)）]/g,'');
-  s=s.replace(/[(（][株有][)）]/g,'').replace(/^[株有]/,'');   // (株)(有)や先頭の株/有（漢字表記が入った場合）
-  s=s.replace(/^(カブ|ユウ)/,'');
+function sortKey(kana,name){
+  let s=dispKana(kana,name);   // 会社名を根拠に法人格を安全に除去（㈱祐味のﾕｳは名前なので残す／㈲アーストラストのﾕｳ=有は消す）
+  s=s.normalize('NFKC');
   s=s.replace(/[\s　・.,＆&\-\(\)（）]/g,'');
   if(/[A-Za-z]/.test(s)) s=_roma(s);
   return s;
 }
-function kkey(r){const k=sortKey(r.kana); return (k||(r.kana||r.name||'ん'))+''+(r.name||'');}
+function kkey(r){const k=sortKey(r.kana,r.name); return (k||(r.kana||r.name||'ん'))+''+(r.name||'');}
 function sortData(){DATA.sort((a,b)=>kkey(a).localeCompare(kkey(b),'ja'));}
 function nowStamp(){return fmtStamp(new Date());}
 function fmtStamp(d){const z=n=>('0'+n).slice(-2);return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());}
@@ -514,7 +518,7 @@ function render(){
   }else{
     let html=''; let curG=null; const seen=[]; let n=0;
     rows.forEach(r=>{
-      if(curSort==='kana'){ const g=gojuonGroup(sortKey(r.kana)); if(g!==curG){ curG=g; if(seen.indexOf(g)<0)seen.push(g); html+='<tr class="grouphdr" id="grp-'+g+'"><td colspan="8">'+g+'</td></tr>'; } }
+      if(curSort==='kana'){ const g=gojuonGroup(sortKey(r.kana,r.name)); if(g!==curG){ curG=g; if(seen.indexOf(g)<0)seen.push(g); html+='<tr class="grouphdr" id="grp-'+g+'"><td colspan="8">'+g+'</td></tr>'; } }
       const bdg=r.src.map(s=>'<span class="bdg '+(BMAP[s]||'t')+'">'+esc(s)+'</span>').join('');
       const addr=(r.zip?'<span class="zip">〒'+esc(r.zip)+'</span>':'')+(r.addr?'<div>'+esc(r.addr)+'</div>':'');
       const telfax=(r.tel?'<div class="mono">'+esc(r.tel)+'</div>':'')+(r.fax?'<div class="mono fax">FAX '+esc(r.fax)+'</div>':'');
@@ -595,7 +599,7 @@ function openEdit(id){
   $('edTitle').textContent=id?'取引先を編集':'取引先を追加';
   $('edName').value=r?r.name:''; $('edKana').value=r?dispKana(r.kana,r.name):''; $('edZip').value=r?r.zip:'';
   $('edAddr').value=r?r.addr:''; $('edTel').value=r?r.tel:''; $('edFax').value=r?r.fax:'';
-  $('edSrc').value=r?(r.src[0]||'得意先'):'得意先';
+  const _srcs=r?(r.src||['得意先']):['得意先']; document.querySelectorAll('.edSrcC').forEach(c=>{c.checked=_srcs.includes(c.value);});
   $('edTanto').value=r?r.tanto:''; $('edYakuin').value=r?r.yakuin:''; $('edMemo').value=r?(r.memo||''):'';
   $('edDelete').style.visibility=id?'visible':'hidden';
   $('dupWarn').classList.remove('show');
@@ -618,10 +622,10 @@ $('edSave').addEventListener('click',()=>{
   if(dup && !editId){ if(!confirm('「'+dup.name+'」と重複の可能性があります。それでも新規追加しますか？')) return; }
   const rec={name:name,kana:$('edKana').value.trim(),zip:$('edZip').value.trim(),addr:$('edAddr').value.trim(),
     tel:$('edTel').value.trim(),fax:$('edFax').value.trim(),tanto:$('edTanto').value,yakuin:$('edYakuin').value,memo:$('edMemo').value.trim()};
+  const _chk=[...document.querySelectorAll('.edSrcC:checked')].map(c=>c.value); const srcArr=_chk.length?_chk:['得意先'];   // 区分は複数選択可
   let savedId;
-  if(editId){ const r=DATA.find(x=>x.id===editId); Object.assign(r,rec); if(!r.src.length)r.src=[$('edSrc').value];
-    if(!r.src.includes($('edSrc').value)) r.src=[$('edSrc').value].concat(r.src.filter(s=>s!==$('edSrc').value)); touch(r); savedId=r.id; }
-  else { const nr=Object.assign({id:uid(),src:[$('edSrc').value]},rec); touch(nr); DATA.push(nr); savedId=nr.id; }
+  if(editId){ const r=DATA.find(x=>x.id===editId); Object.assign(r,rec); r.src=srcArr; touch(r); savedId=r.id; }
+  else { const nr=Object.assign({id:uid(),src:srcArr},rec); touch(nr); DATA.push(nr); savedId=nr.id; }
   dirtyIds.add(savedId);
   sortData(); save(); scheduleSync(); render(); closeMask('mEdit');
   toast(editId?'保存しました':'追加しました：'+name);
